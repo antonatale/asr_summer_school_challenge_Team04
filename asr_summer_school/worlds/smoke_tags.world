@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<sdf version="1.6"><world name="smoke_tags">
+<include><uri>model://sun</uri></include><include><uri>model://ground_plane</uri></include>
+<physics type="ode" name="physics"><max_step_size>0.001</max_step_size><real_time_update_rate>1000</real_time_update_rate></physics>
+<model name="wall"><static>true</static><pose>2 0 0.5 0 0 0</pose><link name="wall"><collision name="wall"><geometry><box><size>0.1 4 1</size></box></geometry></collision><visual name="wall"><geometry><box><size>0.1 4 1</size></box></geometry></visual></link></model>
+<model name="tag9"><static>true</static><pose>1.94 0 0.24 0 1.570796 3.141593</pose><link name="tag"><visual name="tag"><geometry><box><size>0.2 0.2 0.002</size></box></geometry><material><script><uri>model://Apriltag36_11_00009/materials/scripts</uri><uri>model://Apriltag36_11_00009/materials/textures</uri><name>Apriltag36_11_00009</name></script></material></visual></link></model>
+<model name="back"><static>true</static><pose>-3 0 0.5 0 0 0</pose><link name="wall"><collision name="wall"><geometry><box><size>0.1 6 1</size></box></geometry></collision><visual name="wall"><geometry><box><size>0.1 6 1</size></box></geometry></visual></link></model>
+<model name="left"><static>true</static><pose>0 3 0.5 0 0 0</pose><link name="wall"><collision name="wall"><geometry><box><size>6 0.1 1</size></box></geometry></collision><visual name="wall"><geometry><box><size>6 0.1 1</size></box></geometry></visual></link></model>
+<model name="right"><static>true</static><pose>0 -3 0.5 0 0 0</pose><link name="wall"><collision name="wall"><geometry><box><size>6 0.1 1</size></box></geometry></collision><visual name="wall"><geometry><box><size>6 0.1 1</size></box></geometry></visual></link></model>
+<model name="far"><static>true</static><pose>3 0 0.5 0 0 0</pose><link name="wall"><collision name="wall"><geometry><box><size>0.1 6 1</size></box></geometry></collision><visual name="wall"><geometry><box><size>0.1 6 1</size></box></geometry></visual></link></model>
+</world></sdf>

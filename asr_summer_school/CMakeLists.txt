@@ -7,6 +7,9 @@ endif()
 
 # find dependencies
 find_package(ament_cmake REQUIRED)
+find_package(ament_cmake_python REQUIRED)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_components REQUIRED)
 find_package(nav_msgs REQUIRED)
@@ -42,6 +45,9 @@ ament_python_install_package(${PROJECT_NAME})
 
 install(PROGRAMS
   ${PROJECT_NAME}/example_nav_to_pose.py
+  ${PROJECT_NAME}/tag_landmarks.py
+  ${PROJECT_NAME}/motion_guard.py
+  ${PROJECT_NAME}/mission_orchestrator.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
@@ -63,6 +69,18 @@ install(DIRECTORY launch config test worlds models
 ament_environment_hooks("${CMAKE_CURRENT_SOURCE_DIR}/env-hooks/${PROJECT_NAME}.dsv.in")
 
 if(BUILD_TESTING)
+  find_package(Python3 REQUIRED COMPONENTS Interpreter)
+  add_test(NAME mission_policy
+    COMMAND ${Python3_EXECUTABLE} -m unittest discover
+      -s ${CMAKE_CURRENT_SOURCE_DIR}/test -p test_mission_*.py -v
+  )
+  add_test(NAME mission_offline_regressions
+    COMMAND ${Python3_EXECUTABLE} -m unittest discover
+      -s ${CMAKE_CURRENT_SOURCE_DIR}/test -p test_offline_regressions.py -v
+  )
+  set_tests_properties(mission_policy mission_offline_regressions PROPERTIES
+    ENVIRONMENT "PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}:$ENV{PYTHONPATH}"
+  )
   find_package(ament_lint_auto REQUIRED)
   # the following line skips the linter which checks for copyrights
   # comment the line when a copyright and license is added to all source files

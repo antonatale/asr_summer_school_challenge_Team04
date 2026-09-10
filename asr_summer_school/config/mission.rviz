@@ -1,0 +1,43 @@
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+Visualization Manager:
+  Class: ""
+  Global Options:
+    Fixed Frame: map
+    Frame Rate: 15
+  Displays:
+    - Class: rviz_default_plugins/Grid
+      Name: Grid
+      Enabled: true
+    - Class: rviz_default_plugins/Map
+      Name: Mappa SLAM
+      Enabled: true
+      Topic:
+        Value: /map
+        Durability Policy: Transient Local
+    - Class: rviz_default_plugins/LaserScan
+      Name: Laser
+      Enabled: true
+      Topic:
+        Value: /scan
+        Reliability Policy: Best Effort
+      Size (m): 0.02
+    - Class: rviz_default_plugins/Path
+      Name: Percorso Nav2
+      Enabled: true
+      Topic:
+        Value: /plan
+    - Class: rviz_default_plugins/TF
+      Name: Robot e tag
+      Enabled: true
+    - Class: rviz_default_plugins/Image
+      Name: Telecamera
+      Enabled: true
+      Topic:
+        Value: /camera/color/image_raw
+        Reliability Policy: Best Effort
+  Views:
+    Current:
+      Class: rviz_default_plugins/TopDownOrtho
+      Scale: 70
