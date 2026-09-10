@@ -32,13 +32,15 @@ def mission():
                     no_frontiers=0, return_distance=0., home_reached=False, failure=None,
                     pending_kind=None, goal=None, return_attempts=0, blacklist=[], plan_queue=[],
                     route_tolerance=.25, route_grace=6., detour=1.6, route_ok=True,
-                    route_lost_at=None).items():
+                    route_lost_at=None, health_grace=3., unhealthy_at=None,
+                    map_at=100., scan_at=100., guard_at=100.).items():
         setattr(n,k,v)
     n.grid_cache=np.zeros((10,10))
     n.grid=Mock();n.grid.candidates.return_value=[];n.grid.patrol_candidates.return_value=[]
     n.grid.route_report.return_value={}
     n.pose=Mock(return_value=(0.,0.,0.));n.home_pose=Mock(return_value=(0.,0.,0.))
     n.ready=Mock(return_value=True)
+    n.nav=Mock();n.planner=Mock()
     n.event=Mock();n.permit=Mock();n.status=Mock();n.disarm=Mock();n.checkpoint=Mock();n.plan=Mock()
     n.tags=TagStore()
     return n
@@ -89,6 +91,45 @@ class Regressions(unittest.TestCase):
         n.grid.routes.return_value=(None,np.zeros((10,10)));n.grid.distance_to.return_value=math.inf
         n.tick();self.assertEqual(n.state,'RETURN_HOME')
         self.assertEqual(n.event.call_args_list[-1].kwargs['reason'],'return_reserve')
+
+    @patch('time.monotonic', return_value=100.)
+    def test_transient_health_loss_does_not_end_the_mission(self, _):
+        # One aged map->base transform (SLAM lagging in a heavy world) must not
+        # stop the run: permit drops, the guard holds the robot, mission waits.
+        n=mission();n.ready=Mock(return_value=False)
+        n.tick()
+        self.assertEqual(n.state,'EXPLORE');self.assertTrue(n.running)
+        self.assertEqual(n.unhealthy_at,100.)
+        self.assertEqual(n.event.call_args_list[-1].args[0],'health_degraded')
+        n.permit.publish.assert_called_once()
+        self.assertFalse(n.permit.publish.call_args.args[0].data)
+        n.plan.assert_not_called()
+
+    @patch('time.monotonic', return_value=100.)
+    def test_persistent_health_loss_still_halts_after_grace(self, _):
+        n=mission();n.ready=Mock(return_value=False);n.unhealthy_at=97.
+        n.tick()
+        self.assertFalse(n.running);self.assertEqual(n.failure,'sensors_tf_nav_or_guard_unavailable')
+        self.assertIn('health_failure',[c.args[0] for c in n.event.call_args_list])
+
+    @patch('time.monotonic', return_value=100.)
+    def test_health_recovery_within_grace_resumes_and_clears_the_timer(self, _):
+        n=mission();n.unhealthy_at=99.
+        n.tick()
+        self.assertTrue(n.running);self.assertIsNone(n.unhealthy_at)
+        self.assertIn(('health_recovered',),[c.args for c in n.event.call_args_list])
+
+    @patch('time.monotonic', return_value=100.)
+    def test_disarm_halts_immediately_without_grace(self, _):
+        n=mission();n.enabled=False
+        n.tick()
+        self.assertFalse(n.running);self.assertEqual(n.failure,'sensors_tf_nav_or_guard_unavailable')
+
+    @patch('time.monotonic', return_value=100.)
+    def test_deadline_is_enforced_even_while_unhealthy(self, _):
+        n=mission();n.ready=Mock(return_value=False);n.started=-51.;n.unhealthy_at=99.5
+        n.tick()
+        self.assertFalse(n.running);self.assertEqual(n.failure,'deadline')
 
     @patch('time.monotonic', return_value=100.)
     def test_recovered_route_clears_the_unavailable_state(self, _):

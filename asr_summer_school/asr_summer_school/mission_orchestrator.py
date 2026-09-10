@@ -36,10 +36,16 @@ class Mission(Node):
         self.route_tolerance=float(self.declare_parameter('return_route_tolerance',.25).value)
         self.route_grace=float(self.declare_parameter('return_route_grace',6.).value)
         self.detour=float(self.declare_parameter('return_detour_factor',1.6).value)
+        # A slow SLAM update can age map->base past pose()'s limit for a tick
+        # while Nav2 keeps navigating; permit drops and the guard stops the
+        # robot, so losing health only ends the mission after this grace.
+        self.health_grace=float(self.declare_parameter('health_grace',3.).value)
         if not (30<=self.duration<=3600 and .5<=self.radius<=30 and 5<=self.margin<self.duration):
             raise ValueError('Invalid duration, radius or return margin')
         if not (0<=self.route_tolerance<=.3 and 0<=self.route_grace<=.5*self.margin and self.detour>=1.):
             raise ValueError('Invalid return route tolerance, grace or detour factor')
+        if not 0<=self.health_grace<=10:
+            raise ValueError('Invalid health grace')
         self.folder=Path(os.path.expanduser(str(self.declare_parameter('output_dir','~/mission_runs').value))) / time.strftime('%Y%m%d-%H%M%S')
         self.folder.mkdir(parents=True,exist_ok=False)
         self.tf=Buffer();self.listener=TransformListener(self.tf,self)
@@ -66,7 +72,7 @@ class Mission(Node):
         self.target=None;self.plan_queue=[];self.goal_at=0.;self.last_plan=0.
         self.last_health=0.;self.last_checkpoint=0.;self.no_frontiers=0
         self.return_distance=math.inf;self.grid_cache=None;self.home_reached=False
-        self.route_ok=False;self.route_lost_at=None
+        self.route_ok=False;self.route_lost_at=None;self.unhealthy_at=None
         self.last_status=0.;self.failure=None
         self.create_timer(.1,self.tick,clock=Clock(clock_type=ClockType.STEADY_TIME))
         self.event('ready_to_check',output=str(self.folder))
@@ -267,13 +273,24 @@ class Mission(Node):
                     'tags':len(self.tags.export()),'remaining':max(0,self.duration-(now-self.started)) if self.started else self.duration})))
             self.last_status=now
         if not self.running:return
-        if not healthy or not self.enabled:
+        if not self.enabled:
             self.event('health_failure',map_age=now-self.map_at,scan_age=now-self.scan_at,guard_age=now-self.guard_at,pose_available=self.pose() is not None,nav_available=self.nav.server_is_ready(),planner_available=self.planner.server_is_ready(),enabled=self.enabled)
             self.halt('sensors_tf_nav_or_guard_unavailable');return
-        if self.battery is not None and self.battery<10.8:
-            self.halt('low_battery');return
         if now-self.started>=self.duration:
             self.halt('deadline');return
+        if not healthy:
+            if self.unhealthy_at is None:
+                self.unhealthy_at=now
+                self.event('health_degraded',map_age=now-self.map_at,scan_age=now-self.scan_at,guard_age=now-self.guard_at,pose_available=self.pose() is not None,nav_available=self.nav.server_is_ready(),planner_available=self.planner.server_is_ready(),enabled=self.enabled)
+            if now-self.unhealthy_at>=self.health_grace:
+                self.event('health_failure',map_age=now-self.map_at,scan_age=now-self.scan_at,guard_age=now-self.guard_at,pose_available=self.pose() is not None,nav_available=self.nav.server_is_ready(),planner_available=self.planner.server_is_ready(),enabled=self.enabled)
+                self.halt('sensors_tf_nav_or_guard_unavailable')
+            return
+        if self.unhealthy_at is not None:
+            self.event('health_recovered',seconds=now-self.unhealthy_at)
+            self.unhealthy_at=None
+        if self.battery is not None and self.battery<10.8:
+            self.halt('low_battery');return
         if now-self.last_checkpoint>5:
             self.checkpoint();self.last_checkpoint=now
         position=self.pose();home=self.home_pose()

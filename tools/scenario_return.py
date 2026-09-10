@@ -59,7 +59,8 @@ def run(root, flicker_home, label, duration=150., margin=25.):
                      pending_kind=None, goal=None, return_attempts=0, blacklist=[],
                      plan_queue=[], grid_cache=None, started=0.,
                      route_tolerance=.25, route_grace=6., detour=1.6,
-                     route_ok=True, route_lost_at=None).items():
+                     route_ok=True, route_lost_at=None, health_grace=3., unhealthy_at=None,
+                     map_at=0., scan_at=0., guard_at=0.).items():
         setattr(n, k, v)
     n.tags = TagStore()
     n.ready = Mock(return_value=True)
