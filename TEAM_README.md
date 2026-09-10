@@ -57,6 +57,12 @@ account and a name match cannot tell our processes from a teammate's.
 
     bash tools/test_offline.sh
 
+It needs `numpy`, `scipy` and `yaml`. If your default `python3` does not have them —
+easy to hit on a Mac, where Homebrew's python usually shadows a conda install — point
+the script at one that does, it honours the variable:
+
+    PYTHON=/opt/anaconda3/bin/python3 bash tools/test_offline.sh
+
 Runs without ROS: 22 core tests, 30 regressions that execute the real orchestrator
 methods with stubbed transport, 7 diagnostic tests, and a scripted return-home
 scenario over an evolving map. On nuc16, `colcon test` adds the ROS ones,
