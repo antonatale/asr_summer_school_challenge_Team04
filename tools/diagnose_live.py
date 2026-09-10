@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Read-only ROS recorder. Run with robot_mission.sh diagnose [seconds]."""
 import json
-import math
 import time
-from collections import defaultdict
+from collections import defaultdict, Counter
+from diagnostic_metrics import WindowMetrics, graph_warnings
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
@@ -21,7 +21,8 @@ def main():
     parser.add_argument('seconds',type=float,nargs='?',default=15.)
     args=parser.parse_args()
     rclpy.init();n=Node('mission_read_only_diagnostics')
-    counts=defaultdict(int);peaks=defaultdict(float);latest={};positions=[];start=time.monotonic()
+    counts=defaultdict(int);peaks=defaultdict(float);latest={};start=time.monotonic()
+    metrics=WindowMetrics();graph={};next_graph=start;warnings_seen=set()
     tag_ids=set();landmark_ids=set()
     def cmd(topic,m):
         counts[topic]+=1
@@ -29,12 +30,14 @@ def main():
         peaks[topic+'/angular']=max(peaks[topic+'/angular'],abs(m.angular.z))
         counts[topic+'/nonzero_linear']+=int(abs(m.linear.x)>.001)
     def odom(m):
-        counts['odom']+=1;p=m.pose.pose.position;positions.append((p.x,p.y))
+        counts['odom']+=1;p=m.pose.pose.position
+        stamp=m.header.stamp.sec+m.header.stamp.nanosec/1e9
+        metrics.odom(stamp,p.x,p.y,m.twist.twist.linear.x,m.twist.twist.angular.z)
     def scan(m):
         counts['scan']+=1
-        valid=[r for r in m.ranges if math.isfinite(r) and m.range_min<=r<=m.range_max]
-        latest['scan_min_m']=min(valid) if valid else None
-        counts['scan_under_20cm']+=int(bool(valid) and min(valid)<.20)
+        nearest=metrics.scan(m.ranges,m.range_min,m.range_max)
+        latest['scan_min_m']=nearest
+        counts['scan_under_20cm']+=int(nearest is not None and nearest<.20)
     def msg(topic,m):
         counts[topic]+=1
         if topic=='image':latest['image']=[m.width,m.height,m.encoding]
@@ -55,10 +58,15 @@ def main():
     try:
         while rclpy.ok() and time.monotonic()-start<min(180.,max(1.,args.seconds)):
             rclpy.spin_once(n,timeout_sec=.1)
-        displacement=math.dist(positions[0],positions[-1]) if positions else None
-        path=sum(math.dist(a,b) for a,b in zip(positions,positions[1:])) if positions else None
+            if time.monotonic()>=next_graph:
+                nodes=Counter((ns.rstrip('/')+'/'+name) for name,ns in n.get_node_names_and_namespaces())
+                duplicates=sorted(name for name,count in nodes.items() if count>1)
+                publishers=[p.node_namespace.rstrip('/')+'/'+p.node_name for p in n.get_publishers_info_by_topic('/cmd_vel')]
+                graph={'cmd_vel_publishers':publishers,'duplicate_nodes':duplicates}
+                warnings_seen.update(graph_warnings(publishers,duplicates))
+                next_graph=time.monotonic()+5.
         print(json.dumps(dict(seconds=time.monotonic()-start,counts=dict(counts),peaks=dict(peaks),
-                              odom_displacement_m=displacement,odom_path_m=path,
+                              **metrics.report(),graph=graph,warnings=sorted(warnings_seen),
                               detected_ids=sorted(tag_ids),localized_ids=sorted(landmark_ids),latest=latest),indent=2))
     finally:
         n.destroy_node();rclpy.try_shutdown()
