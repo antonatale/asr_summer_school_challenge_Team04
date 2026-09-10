@@ -53,6 +53,47 @@ detection:
 Segnala anche publisher multipli su `/cmd_vel` e nomi di nodo duplicati, che sono
 il sintomo tipico di un lancio precedente rimasto aperto. Non termina niente.
 
+## Due trappole che fanno perdere tempo
+
+Sono state entrambe osservate sul robot 08. In tutti e due i casi il sintomo è
+identico: nessun errore da nessuna parte, e il robot fermo.
+
+### Il bringup dei tutor ha bisogno del router Zenoh
+
+Con `RMW_IMPLEMENTATION=rmw_zenoh_cpp` la scoperta fra processi passa da un router
+su `localhost:7447`. Senza router ogni processo resta in una sessione isolata: il
+teleop pubblica su `/cmd_vel` e `turtlebot3_node` non lo sente mai. `ros2 node
+list` non mostra nulla e `ros2 topic list` solo `/parameter_events` e `/rosout`,
+anche se il bringup nel suo terminale scrive `Run!` — quel messaggio dice solo che
+la seriale verso l'OpenCR si è aperta.
+
+Il router va avviato prima, in un terminale che resta aperto:
+
+    ros2 run rmw_zenoh_cpp rmw_zenohd
+
+Per capire in un secondo se è il problema: `ss -ltn | grep 7447`. Se la porta è
+chiusa, non c'è router. Vale anche per una registrazione con `ros2 bag record`,
+che altrimenti registra il vuoto.
+
+### Il nostro stack e quello dei tutor non convivono
+
+`autonomy.launch.py sensors:=true` include `turtlebot3_bringup/robot.launch.py`,
+quindi avvia da sé i driver, la camera, il rilevatore AprilTag e SLAM. È
+autosufficiente e va lanciato **con il bringup dei tutor spento**: altrimenti due
+`turtlebot3_node` si contendono `/dev/ttyACM0`.
+
+I nostri script esportano `RMW_IMPLEMENTATION=rmw_fastrtps_cpp`, mentre l'ambiente
+consigliato sul robot usa Zenoh. Dentro il nostro lancio è coerente e funziona,
+ma da un altro terminale SSH non si vede niente della missione finché non si
+esporta lo stesso middleware:
+
+    export RMW_IMPLEMENTATION=rmw_fastrtps_cpp ROS_DOMAIN_ID=8 ROS_LOCALHOST_ONLY=1
+
+Prima di gridare al guasto, controllare questo. La combinazione opposta — il
+nostro stack con `sensors:=false` appoggiato al bringup dei tutor — non è mai
+stata provata e con i middleware diversi non può funzionare: Nav2 non vedrebbe
+`/scan`.
+
 ## Correzioni già applicate nel nostro package
 
 I submodule dei tutor restano invariati; quanto segue è nel nostro pacchetto.
