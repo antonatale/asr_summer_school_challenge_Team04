@@ -9,13 +9,24 @@ DEST="${WS}/src/challenge"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 echo "== rsync verso ${HOST}:${DEST} =="
-rsync -az --delete \
+# --delete-excluded, non solo --delete: rsync protegge dalla cancellazione i file
+# che corrispondono a un --exclude, quindi i file macOS `._*` gia' presenti sul
+# remoto sopravvivrebbero a ogni sync.  Con --symlink-install colcon li installa
+# come symlink; ripulendo poi i sorgenti restano symlink rotti in install/ e
+# gzserver muore all'avvio della camera con "Unable to load Ogre Resources".
+rsync -az --delete --delete-excluded \
   --exclude '__pycache__' --exclude '*.pyc' --exclude '._*' --exclude '.DS_Store' \
   --exclude '.git' --exclude 'build' --exclude 'install' --exclude 'log' \
   "${HERE}/asr_summer_school/" "${HOST}:${DEST}/asr_summer_school/"
-rsync -az \
+rsync -az --delete --delete-excluded \
   --exclude '__pycache__' --exclude '*.pyc' --exclude '._*' --exclude '.DS_Store' \
   "${HERE}/tools/" "${HOST}:${DEST}/tools/"
+
+echo "== bonifica residui AppleDouble e symlink rotti =="
+ssh "${HOST}" "find ${DEST} -name '._*' -delete 2>/dev/null; \
+  find ${WS}/install ${WS}/build -xtype l -delete 2>/dev/null; \
+  echo \"AppleDouble residui: \$(find ${DEST} -name '._*' 2>/dev/null | wc -l), \
+symlink rotti: \$(find ${WS}/install ${WS}/build -xtype l 2>/dev/null | wc -l)\""
 
 echo "== aggiorno run_sim.sh =="
 rsync -az "${HERE}/tools/run_nuc16_sim.sh" "${HOST}:${WS}/run_sim.sh"
