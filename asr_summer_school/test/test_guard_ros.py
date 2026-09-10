@@ -1,18 +1,39 @@
 """Real ROS transport integration; run only on localhost test domain 87."""
+import inspect
 import os
 import subprocess
 import signal
 import time
 import unittest
 import rclpy
+from asr_summer_school.mission_core import limited_command
 from rclpy.node import Node
 from geometry_msgs.msg import Twist
 from sensor_msgs.msg import LaserScan
 from std_msgs.msg import Bool
 from std_srvs.srv import SetBool
 
+# Read the caps the guard actually enforces instead of repeating the numbers
+# here: a copy silently goes stale when limited_command changes, which is how
+# this test came to assert 0.12 m/s while the guard clamped to 0.18.
+CAPS = inspect.signature(limited_command).parameters
+MAX_LINEAR = CAPS['max_linear'].default
+MAX_ANGULAR = CAPS['max_angular'].default
+
+# TurtleBot3 Burger datasheet maxima. The supervised caps must stay strictly
+# below them whatever value the team settles on, so a typo cannot let the guard
+# forward full speed.
+BURGER_MAX_LINEAR = .22
+BURGER_MAX_ANGULAR = 2.84
+
 
 class GuardIntegration(unittest.TestCase):
+    def test_caps_stay_below_the_robot_maxima(self):
+        self.assertGreater(MAX_LINEAR, 0.)
+        self.assertLess(MAX_LINEAR, BURGER_MAX_LINEAR)
+        self.assertGreater(MAX_ANGULAR, 0.)
+        self.assertLess(MAX_ANGULAR, BURGER_MAX_ANGULAR)
+
     def test_live_gate(self):
         self.assertEqual(os.environ.get('ROS_DOMAIN_ID'),'87')
         self.assertEqual(os.environ.get('ROS_LOCALHOST_ONLY'),'1')
@@ -42,7 +63,10 @@ class GuardIntegration(unittest.TestCase):
             self.assertTrue(future.result().success)
             outputs.clear();pump(.5)
             self.assertTrue(any(v>0 for _,v,w in outputs))
-            self.assertTrue(all(v<=.12 and abs(w)<=.45 for _,v,w in outputs))
+            # 0.18 m/s is the accepted cap, not a runtime speed increase; read it
+            # from the guard so the two can never drift apart again.
+            self.assertTrue(all(0<=v<=MAX_LINEAR+1e-9 and abs(w)<=MAX_ANGULAR+1e-9
+                                for _,v,w in outputs))
             outputs.clear();pump(1.2,heartbeat=False)
             self.assertTrue(all(v==0 and w==0 for _,v,w in outputs[-5:]))
             pump(.3);outputs.clear();pump(1.2,scans=False)

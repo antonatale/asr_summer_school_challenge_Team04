@@ -81,6 +81,20 @@ if(BUILD_TESTING)
   set_tests_properties(mission_policy mission_offline_regressions PROPERTIES
     ENVIRONMENT "PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}:$ENV{PYTHONPATH}"
   )
+
+  # test_guard_ros.py matched neither pattern above, so the one test that
+  # exercises the real /cmd_vel gate never ran.  It drives actual ROS
+  # transport, so pin it to the isolated localhost domain 87 and to a
+  # middleware that needs no router: it must not reach the robot's domain 8
+  # nor the simulation's 116, whatever the shell happens to export.
+  add_test(NAME guard_transport
+    COMMAND ${Python3_EXECUTABLE} -m unittest discover
+      -s ${CMAKE_CURRENT_SOURCE_DIR}/test -p test_guard_ros.py -v
+  )
+  set_tests_properties(guard_transport PROPERTIES
+    ENVIRONMENT "PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}:$ENV{PYTHONPATH};ROS_DOMAIN_ID=87;ROS_LOCALHOST_ONLY=1;RMW_IMPLEMENTATION=rmw_fastrtps_cpp"
+    TIMEOUT 120
+  )
   find_package(ament_lint_auto REQUIRED)
   # the following line skips the linter which checks for copyrights
   # comment the line when a copyright and license is added to all source files
