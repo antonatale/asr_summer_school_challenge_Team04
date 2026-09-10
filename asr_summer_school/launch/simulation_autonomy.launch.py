@@ -40,7 +40,7 @@ def setup(context):
         include(tb,'robot_state_publisher.launch.py',use_sim_time='true'),
         Node(package='gazebo_ros',executable='spawn_entity.py',arguments=['-entity','burger','-file',model.name,'-z','0.01'],output='screen'),
         include(share,'slam_toolbox.launch.py',use_sim_time='true'),
-        include(share,'autonomy.launch.py',use_sim_time='true',sensors='false',nav_params=os.path.join(share,'config','simulation_rpp.yaml'),duration=LaunchConfiguration('duration').perform(context),max_radius='5.0'),
+        include(share,'autonomy.launch.py',use_sim_time='true',sensors='false',nav_params=os.path.join(share,'config','simulation_rpp.yaml'),duration=LaunchConfiguration('duration').perform(context)),
         Node(package='apriltag_ros',executable='apriltag_node',namespace='camera',name='apriltag',parameters=[params,{'use_sim_time':True}],remappings=[('image_rect','/camera/color/image_raw'),('camera_info','/camera/color/camera_info')]),
         Node(package='asr_summer_school',executable='tag_landmarks.py',parameters=[{'use_sim_time':True}]),
         Node(package='rviz2',executable='rviz2',arguments=['-d',os.path.join(share,'config','mission.rviz')],parameters=[{'use_sim_time':True}],condition=IfCondition(LaunchConfiguration('rviz')))]

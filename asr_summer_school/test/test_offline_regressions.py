@@ -5,6 +5,7 @@ These tests verify policy/control flow, not ROS ABI, DDS or physical navigation.
 import ast
 import json
 import math
+import re
 import time
 import unittest
 from pathlib import Path
@@ -130,6 +131,55 @@ class Regressions(unittest.TestCase):
         n=mission();n.ready=Mock(return_value=False);n.started=-51.;n.unhealthy_at=99.5
         n.tick()
         self.assertFalse(n.running);self.assertEqual(n.failure,'deadline')
+
+    @patch('time.monotonic', return_value=100.)
+    def test_no_position_limit_by_default(self, _):
+        # max_radius 0 -> inf: distance from the start must never end exploration,
+        # the clock and the return reserve are the only bounds.
+        n=mission();n.radius=math.inf;n.grid_cache=None
+        n.grid.routes.return_value=(None,np.zeros((10,10)))
+        n.pose.return_value=(40.,0.,0.);n.grid.distance_to.return_value=1.
+        n.tick()
+        self.assertEqual(n.state,'EXPLORE')
+        self.assertNotIn('radius_limit',[c.kwargs.get('reason') for c in n.event.call_args_list])
+
+    def test_nothing_ships_a_position_limit(self):
+        """max_radius must default to 0 (no limit) in the node and every launcher.
+
+        The offline tests build Mission without __init__, so they cannot catch a
+        default creeping back in; 5 m was once left behind from a scripted trial
+        and silently capped exploration.
+        """
+        declared = [node for node in ast.walk(tree)
+                    if isinstance(node, ast.Call)
+                    and getattr(node.func, 'attr', None) == 'declare_parameter'
+                    and node.args and getattr(node.args[0], 'value', None) == 'max_radius']
+        self.assertEqual(len(declared), 1)
+        self.assertEqual(declared[0].args[1].value, 0.)
+
+        pattern = re.compile(r"""max_radius['"]?\s*(?::=|,\s*default_value\s*=)\s*"""
+                             r"""['"]?(?:\$\{\d+:-)?([0-9]+(?:\.[0-9]+)?)""")
+        sources = list((ROOT/'launch').glob('*.py')) + list((ROOT.parent/'tools').glob('*.sh'))
+        self.assertTrue(sources)
+        for source in sources:
+            for value in pattern.findall(source.read_text()):
+                self.assertEqual(float(value), 0., f'{source.name} imposes max_radius={value}')
+
+    def test_far_candidates_are_kept_without_a_radius(self):
+        n=mission();n.radius=math.inf
+        far=[{'x':50.,'y':0.,'yaw':0.},{'x':0.,'y':-80.,'yaw':0.}]
+        self.assertEqual(n.within_radius(far,(0.,0.,0.)),far)
+
+    @patch('time.monotonic', return_value=100.)
+    def test_an_explicit_radius_still_bounds_the_mission(self, _):
+        # The bound stays available for a deliberately cautious first run.
+        n=mission();n.radius=5.;n.grid_cache=None
+        n.grid.routes.return_value=(None,np.zeros((10,10)))
+        n.pose.return_value=(40.,0.,0.);n.grid.distance_to.return_value=1.
+        n.tick()
+        self.assertEqual(n.state,'RETURN_HOME')
+        self.assertIn('radius_limit',[c.kwargs.get('reason') for c in n.event.call_args_list])
+        self.assertEqual(n.within_radius([{'x':50.,'y':0.,'yaw':0.}],(0.,0.,0.)),[])
 
     @patch('time.monotonic', return_value=100.)
     def test_recovered_route_clears_the_unavailable_state(self, _):

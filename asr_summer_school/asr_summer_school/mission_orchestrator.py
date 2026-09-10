@@ -29,7 +29,12 @@ class Mission(Node):
     def __init__(self):
         super().__init__('mission_orchestrator')
         self.duration=float(self.declare_parameter('duration',180.).value)
-        self.radius=float(self.declare_parameter('max_radius',2.).value)
+        # 0 (the default) means no limit: the mission is bounded by the clock and
+        # by the return reserve, not by a distance from the start.  A positive
+        # value re-imposes a bound, which is only wanted for a first cautious
+        # run in a small area.
+        radius=float(self.declare_parameter('max_radius',0.).value)
+        self.radius=math.inf if radius<=0 else radius
         self.margin=float(self.declare_parameter('return_margin',25.).value)
         # A momentary loss of the internal route must not end exploration; the
         # reserve is kept with a pessimistic estimate during the grace window.
@@ -40,8 +45,10 @@ class Mission(Node):
         # while Nav2 keeps navigating; permit drops and the guard stops the
         # robot, so losing health only ends the mission after this grace.
         self.health_grace=float(self.declare_parameter('health_grace',3.).value)
-        if not (30<=self.duration<=3600 and .5<=self.radius<=30 and 5<=self.margin<self.duration):
-            raise ValueError('Invalid duration, radius or return margin')
+        if not (30<=self.duration<=3600 and 5<=self.margin<self.duration):
+            raise ValueError('Invalid duration or return margin')
+        if math.isfinite(self.radius) and not .5<=self.radius<=30:
+            raise ValueError('Invalid max_radius: 0 for no limit, otherwise 0.5 to 30 m')
         if not (0<=self.route_tolerance<=.3 and 0<=self.route_grace<=.5*self.margin and self.detour>=1.):
             raise ValueError('Invalid return route tolerance, grace or detour factor')
         if not 0<=self.health_grace<=10:
@@ -263,6 +270,12 @@ class Mission(Node):
             else:
                 self.blacklist.append((self.target['x'],self.target['y'],now+25))
 
+    def within_radius(self,candidates,home):
+        if not math.isfinite(self.radius):
+            return candidates
+        return [c for c in candidates
+                if math.hypot(c['x']-home[0],c['y']-home[1])<=self.radius]
+
     def tick(self):
         now=time.monotonic()
         healthy=self.ready()
@@ -323,7 +336,7 @@ class Mission(Node):
             # The reserve is checked on the estimate in use, measured or not.
             if math.isfinite(self.return_distance) and now-self.started+reserve_seconds(self.return_distance,margin=self.margin)>=self.duration:
                 self.begin_return('return_reserve')
-            if direct>self.radius+.2:
+            if math.isfinite(self.radius) and direct>self.radius+.2:
                 self.begin_return('radius_limit')
         if now-self.started >= self.duration-self.margin:
             self.begin_return('return_margin')
@@ -341,14 +354,14 @@ class Mission(Node):
                 self.home_reached=True;self.state='DONE';self.running=False;self.disarm();self.checkpoint(final=True);return
             self.plan({'x':home[0],'y':home[1],'yaw':home[2],'home':True});return
         candidates=self.grid.candidates(position,self.grid_cache,self.blacklist,now)
-        candidates=[c for c in candidates if math.hypot(c['x']-home[0],c['y']-home[1])<=self.radius]
+        candidates=self.within_radius(candidates,home)
         if not candidates:
             self.no_frontiers+=1
             # Known free space can have no frontier after SLAM has already
             # marked the nearby area.  Patrol reachable cells before giving up.
             candidates=self.grid.patrol_candidates(position,self.grid_cache,self.blacklist,now,
                                                    max_radius=min(self.radius,3.0))
-            candidates=[c for c in candidates if math.hypot(c["x"]-home[0],c["y"]-home[1])<=self.radius]
+            candidates=self.within_radius(candidates,home)
             if candidates:
                 self.event('frontier_fallback',count=len(candidates),attempt=self.no_frontiers)
             elif self.no_frontiers>=10:

@@ -17,7 +17,7 @@ def generate_launch_description():
     actions=[DeclareLaunchArgument('nav_params',default_value=os.path.join(share,'config','autonomy_nav2.yaml')),DeclareLaunchArgument('use_sim_time',default_value='false'),
              DeclareLaunchArgument('sensors',default_value='false'),
              DeclareLaunchArgument('duration',default_value='180.0'),
-             DeclareLaunchArgument('max_radius',default_value='2.0')]
+             DeclareLaunchArgument('max_radius',default_value='0.0')]   # 0 = nessun limite di posizione
     for package,file in [('turtlebot3_bringup','robot.launch.py'),('turtlebot3_perception','camera.launch.py'),('asr_summer_school','apriltag_corrected.launch.py')]:
         actions.append(IncludeLaunchDescription(PythonLaunchDescriptionSource(os.path.join(get_package_share_directory(package),'launch',file)),launch_arguments={'use_sim_time':sim}.items(),condition=IfCondition(sensors)))
     actions.append(IncludeLaunchDescription(PythonLaunchDescriptionSource(os.path.join(share,'launch','slam_toolbox.launch.py')),launch_arguments={'use_sim_time':sim}.items(),condition=IfCondition(sensors)))
