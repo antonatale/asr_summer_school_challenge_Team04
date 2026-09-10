@@ -172,3 +172,10 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+# lab data: keep maps and logs, not bags/images
+lab_data/**/*.db3
+lab_data/**/*.mcap
+lab_data/**/metadata.yaml
+lab_data/**/*.png
+lab_data/**/*.jpg
+lab_data/**/*.jpeg
